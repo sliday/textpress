@@ -2,6 +2,8 @@
 
 Textpress is a Python script that compresses text content within files using AI models. It processes files like JavaScript, JSON, YAML, etc., extracts text strings, and compresses them to be more concise while retaining their original meaning. The script is interactive and allows customization to tailor the compression process to your needs.
 
+![textpress](https://github.com/user-attachments/assets/96579e5d-11cb-4e15-a78d-326f8315265d)
+
 ## How It Works
 
 Textpress follows these steps:
