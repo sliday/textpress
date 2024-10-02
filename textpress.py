@@ -9,6 +9,7 @@ import os
 import subprocess
 import esprima
 import json
+import time
 
 init(autoreset=True)  # Initialize colorama
 
@@ -203,7 +204,7 @@ def compress_strings(strings, format_name, expert_field, style_guide, use_emojis
     
     return compressed_strings, compression_attempts
 
-def calculate_stats(original_content, compressed_content, compression_attempts):
+def calculate_stats(original_content, compressed_content, compression_attempts, start_time, end_time):
     original_size = len(original_content.encode('utf-8'))
     compressed_size = len(compressed_content.encode('utf-8'))
     compression_ratio = (1 - compressed_size / original_size) * 100
@@ -215,13 +216,18 @@ def calculate_stats(original_content, compressed_content, compression_attempts):
     avg_compressed_len = sum(len(s) for s in compressed_strings) / len(compressed_strings) if compressed_strings else 0
     avg_compression_attempts = sum(compression_attempts) / len(compression_attempts) if compression_attempts else 0
 
+    total_time = end_time - start_time
+    avg_time_per_string = total_time / len(compression_attempts) if compression_attempts else 0
+
     return {
         'original_size': original_size,
         'compressed_size': compressed_size,
         'compression_ratio': compression_ratio,
         'avg_original_len': avg_original_len,
         'avg_compressed_len': avg_compressed_len,
-        'avg_compression_attempts': avg_compression_attempts
+        'avg_compression_attempts': avg_compression_attempts,
+        'total_time': total_time,
+        'avg_time_per_string': avg_time_per_string
     }
 
 def display_stats(stats):
@@ -233,6 +239,8 @@ def display_stats(stats):
     print(f"{Fore.BLUE}Avg original length:   {stats['avg_original_len']:.2f} characters")
     print(f"{Fore.BLUE}Avg compressed length: {stats['avg_compressed_len']:.2f} characters")
     print(f"{Fore.BLUE}Avg compression attempts: {stats['avg_compression_attempts']:.2f}")
+    print(f"{Fore.BLUE}Total processing time: {stats['total_time']:.2f} seconds")
+    print(f"{Fore.BLUE}Avg time per string:   {stats['avg_time_per_string']:.4f} seconds")
     print(f"{Fore.YELLOW}{'='*40}")
 
 def replace_strings_in_content_by_positions(content, positions, original_strings, compressed_strings):
@@ -488,6 +496,9 @@ def main():
     print(f"{Fore.GREEN}Found {num_strings} strings in the file.")
     print(f"{Fore.CYAN}{num_strings_to_compress} strings will be compressed based on the criteria.")
 
+    # Start timing
+    start_time = time.time()
+
     # Compress strings
     logging.info("Compressing content")
     compressed_strings, compression_attempts = compress_strings(
@@ -500,6 +511,9 @@ def main():
         max_attempts=compression_level,
         temperature=temperature
     )
+
+    # End timing
+    end_time = time.time()
 
     # Replace compressed strings in content
     logging.info("Replacing strings in content")
@@ -516,7 +530,7 @@ def main():
         f.write(modified_content)
 
     # Calculate and display statistics
-    stats = calculate_stats(content, modified_content, compression_attempts)
+    stats = calculate_stats(content, modified_content, compression_attempts, start_time, end_time)
     display_stats(stats)
 
     # Display before and after samples
