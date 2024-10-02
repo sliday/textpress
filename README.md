@@ -95,6 +95,16 @@ python textpress.py input.js [output.js]
    pip install json5 ell colorama pyyaml esprima
    ```
 
+## Star History
+
+<a href="https://star-history.com/#sliday/textpress&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=sliday/textpress&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=sliday/textpress&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=sliday/textpress&type=Date" />
+ </picture>
+</a>
+
 ## Notes
 
 - **AI Model Credentials**:
