@@ -131,11 +131,11 @@ def compress_string(original: str, format_name: str, expert_field: str, style_gu
     emoji_instruction = "Include relevant emojis in the output." if use_emojis else "Do not use emojis."
     prompt = f"""You are an expert at making text more concise without changing its meaning. Don't reword, don't improve. Think hard and find ways to combine and shorten the text. Fix grammar. No talk; just go. `interactive=false`
     Compress the given text content from a {format_name} file. Follow these guidelines:
-    1. Maintain the original meaning while making the text significantly more concise.
-    2. The compressed string MUST be shorter than the original.
+    1. MUST maintain the original meaning.
+    2. The compressed string MUST be shorter than {len(unescaped_original)} characters and have the same meaning as the original.
     3. Use language appropriate for an expert in {expert_field}.
     4. {emoji_instruction}
-    5. {style_guide}
+    5. MUST follow this instruction:{style_guide}
     6. Return ONLY the compressed string.
     7. Do NOT wrap output in quotes.
 
@@ -160,21 +160,24 @@ def compress_string(original: str, format_name: str, expert_field: str, style_gu
 import time
 from itertools import cycle
 
-def compress_strings(strings, format_name, expert_field, style_guide, use_emojis, model, max_attempts, temperature):
+def compress_strings(strings, format_name, expert_field, style_guide, use_emojis, model, compression_level, temperature):
     compressed_strings = []
     compression_attempts = []
+    total_original_length = 0
+    total_compressed_length = 0
     spinner = cycle(['-', '\\', '|', '/'])
     
     for i, string in enumerate(strings):
-        attempts = 1
+        attempts = 0
         shortest_compressed = string
         current_string = string
         
         print(f"\n{Fore.CYAN}Compressing string {i+1}/{len(strings)}:")
         print(f"{Fore.YELLOW}Before: {string[:100]}{'...' if len(string) > 100 else ''}")
         
-        while attempts <= max_attempts:
-            print(f"\r{Fore.WHITE}Attempt {attempts}/{max_attempts} {next(spinner)}", end='', flush=True)
+        while attempts < compression_level:
+            attempts += 1
+            print(f"\r{Fore.WHITE}Attempt {attempts}/{compression_level} {next(spinner)}", end='', flush=True)
             
             if model == "llama3.2":
                 prompt = compress_string(
@@ -192,28 +195,29 @@ def compress_strings(strings, format_name, expert_field, style_guide, use_emojis
                 current_string = compressed
             else:
                 break
-            attempts += 1
+            
             time.sleep(0.017)  # Add a small delay for visual effect
         
-        print(f"\r{Fore.GREEN}Compressed in {attempts} attempt(s):")
+        print(f"\r{Fore.GREEN}Compressed in {attempts} of {compression_level} attempt(s):")
         print(f"{Fore.MAGENTA}After:  {shortest_compressed[:100]}{'...' if len(shortest_compressed) > 100 else ''}")
         print(f"{Fore.BLUE}Length: {len(string)} → {len(shortest_compressed)} ({(1 - len(shortest_compressed) / len(string)) * 100:.2f}% reduction)")
         
         compressed_strings.append(shortest_compressed)
         compression_attempts.append(attempts)
+        total_original_length += len(string)
+        total_compressed_length += len(shortest_compressed)
     
-    return compressed_strings, compression_attempts
+    return compressed_strings, compression_attempts, total_original_length, total_compressed_length
 
-def calculate_stats(original_content, compressed_content, compression_attempts, start_time, end_time):
+def calculate_stats(original_content, compressed_content, compression_attempts, start_time, end_time, total_original_length, total_compressed_length):
     original_size = len(original_content.encode('utf-8'))
     compressed_size = len(compressed_content.encode('utf-8'))
     compression_ratio = (1 - compressed_size / original_size) * 100
 
-    original_strings = re.findall(r'"([^"]*)"', original_content)
-    compressed_strings = re.findall(r'"([^"]*)"', compressed_content)
+    text_compression_ratio = (1 - total_compressed_length / total_original_length) * 100 if total_original_length > 0 else 0
 
-    avg_original_len = sum(len(s) for s in original_strings) / len(original_strings) if original_strings else 0
-    avg_compressed_len = sum(len(s) for s in compressed_strings) / len(compressed_strings) if compressed_strings else 0
+    avg_original_len = total_original_length / len(compression_attempts) if compression_attempts else 0
+    avg_compressed_len = total_compressed_length / len(compression_attempts) if compression_attempts else 0
     avg_compression_attempts = sum(compression_attempts) / len(compression_attempts) if compression_attempts else 0
 
     total_time = end_time - start_time
@@ -223,11 +227,14 @@ def calculate_stats(original_content, compressed_content, compression_attempts, 
         'original_size': original_size,
         'compressed_size': compressed_size,
         'compression_ratio': compression_ratio,
+        'text_compression_ratio': text_compression_ratio,
         'avg_original_len': avg_original_len,
         'avg_compressed_len': avg_compressed_len,
         'avg_compression_attempts': avg_compression_attempts,
         'total_time': total_time,
-        'avg_time_per_string': avg_time_per_string
+        'avg_time_per_string': avg_time_per_string,
+        'total_original_length': total_original_length,
+        'total_compressed_length': total_compressed_length
     }
 
 def display_stats(stats):
@@ -235,12 +242,14 @@ def display_stats(stats):
     print(f"{Fore.YELLOW}{'='*40}")
     print(f"{Fore.GREEN}Original file size:    {stats['original_size']:,} bytes")
     print(f"{Fore.GREEN}Compressed file size:  {stats['compressed_size']:,} bytes")
-    print(f"{Fore.MAGENTA}Compression ratio:     {stats['compression_ratio']:.2f}%")
+    print(f"{Fore.MAGENTA}File compression ratio:     {stats['compression_ratio']:.2f}%")
+    print(f"{Fore.MAGENTA}Text compression ratio: {stats['text_compression_ratio']:.2f}%")
+    print(f"{Fore.BLUE}Total original length: {stats['total_original_length']} characters")
+    print(f"{Fore.BLUE}Total compressed length: {stats['total_compressed_length']} characters")
     print(f"{Fore.BLUE}Avg original length:   {stats['avg_original_len']:.2f} characters")
     print(f"{Fore.BLUE}Avg compressed length: {stats['avg_compressed_len']:.2f} characters")
-    print(f"{Fore.BLUE}Avg compression attempts: {stats['avg_compression_attempts']:.2f}")
-    print(f"{Fore.BLUE}Total processing time: {stats['total_time']:.2f} seconds")
-    print(f"{Fore.BLUE}Avg time per string:   {stats['avg_time_per_string']:.4f} seconds")
+    print(f"{Fore.YELLOW}Total processing time: {stats['total_time']:.2f} seconds")
+    print(f"{Fore.YELLOW}Avg time per string:   {stats['avg_time_per_string']:.4f} seconds")
     print(f"{Fore.YELLOW}{'='*40}")
 
 def replace_strings_in_content_by_positions(content, positions, original_strings, compressed_strings):
@@ -255,27 +264,24 @@ def replace_strings_in_content_by_positions(content, positions, original_strings
         original_string_with_quotes = new_content[adjusted_start:adjusted_end]
         quote_char = original_string_with_quotes[0]  # Either ' or "
 
-        # Unescape the compressed string
-        compressed_unescaped = bytes(compressed, "utf-8").decode("unicode_escape")
+        # Clean up the compressed string
+        compressed_unescaped = compressed.strip()
 
-        # Remove surrounding quotes if present in the compressed string
-        if (compressed_unescaped.startswith("'") and compressed_unescaped.endswith("'")) or \
-           (compressed_unescaped.startswith('"') and compressed_unescaped.endswith('"')):
-            compressed_unescaped = compressed_unescaped[1:-1]
-
-        # Escape only necessary characters for JavaScript
+        # Escape necessary characters
         compressed_escaped = compressed_unescaped.replace('\\', '\\\\').replace(quote_char, f'\\{quote_char}')
 
         # Reconstruct the string with the original quote character
         replaced_string = f"{quote_char}{compressed_escaped}{quote_char}"
 
-        # Replace in the content
+        # Replace the original string with the compressed string
         new_content = new_content[:adjusted_start] + replaced_string + new_content[adjusted_end:]
+
+        # Update offset
         offset += len(replaced_string) - (adjusted_end - adjusted_start)
 
     return new_content
 
-def extract_strings_with_positions(content, format_name):
+def extract_strings_with_positions(content, format_name, model, temperature):
     # Extract all strings and positions
     if format_name == 'JavaScript':
         strings, positions = extract_strings_from_javascript(content)
@@ -286,15 +292,14 @@ def extract_strings_with_positions(content, format_name):
     else:
         strings, positions = extract_strings_with_regex(content)
     
-    # Store the original strings and positions
     original_strings = strings.copy()
     original_positions = positions.copy()
     
-    # Filter out strings that are under 12 characters or only one word
+    # Use AI to decide which strings to compress
     filtered_strings = []
     filtered_positions = []
     for string, position in zip(strings, positions):
-        if is_sentence(string):
+        if decide_to_compress(string, format_name, model, temperature):
             filtered_strings.append(string)
             filtered_positions.append(position)
     return original_strings, original_positions, filtered_strings, filtered_positions
@@ -387,6 +392,30 @@ def find_strings_in_yaml(data, content, path=""):
     elif isinstance(data, list):
         for i, item in enumerate(data):
             yield from find_strings_in_yaml(item, content, f"{path}[{i}]")
+
+# Implement the decide_to_compress function using ell
+def decide_to_compress(string, format_name, model, temperature):
+    # Prepare the prompt for the AI model
+    prompt = f"""You are analyzing strings in a {format_name} file to determine if they should be compressed.
+    
+String: "{string}"
+
+Instructions:
+- Respond with 'YES' if string is NOT a value or variable, but a string that is part of the content.
+- Respond with 'NO' if the string is parameter, not the actual content.
+- Do not provide any additional text or explanation.
+
+No intro, no outro, no comments, no explanations, no yapping. Just the answer.
+
+Answer:"""
+
+    # Use the ell library to get a response from the AI model
+    @ell.simple(model=model, max_tokens=1, temperature=temperature)
+    def ell_decide(p):
+        return p
+
+    response = ell_decide(prompt).strip().upper()
+    return response == 'YES'
 
 def main():
     logging.info("Starting AI Text Copy Compressor")
@@ -485,11 +514,12 @@ def main():
     use_emojis = input(emoji_prompt).strip().lower() == 'y'
     print(f"{Fore.MAGENTA}Emoji usage: {'Enabled 😊' if use_emojis else 'Disabled 🚫'}")
 
-    # Extract strings and positions
-    logging.info("Extracting strings")
+    # Extract strings and positions, using the AI-based filtering
     original_strings, original_positions, strings_to_compress, positions_to_compress = extract_strings_with_positions(
         content=content,
-        format_name=format_name
+        format_name=format_name,
+        model=model,
+        temperature=temperature
     )
     num_strings = len(original_strings)
     num_strings_to_compress = len(strings_to_compress)
@@ -501,14 +531,14 @@ def main():
 
     # Compress strings
     logging.info("Compressing content")
-    compressed_strings, compression_attempts = compress_strings(
+    compressed_strings, compression_attempts, total_original_length, total_compressed_length = compress_strings(
         strings=strings_to_compress,
         format_name=format_name,
         expert_field=expert_field,
         style_guide=style_guide,
         use_emojis=use_emojis,
         model=model,
-        max_attempts=compression_level,
+        compression_level=compression_level,
         temperature=temperature
     )
 
@@ -530,7 +560,7 @@ def main():
         f.write(modified_content)
 
     # Calculate and display statistics
-    stats = calculate_stats(content, modified_content, compression_attempts, start_time, end_time)
+    stats = calculate_stats(content, modified_content, compression_attempts, start_time, end_time, total_original_length, total_compressed_length)
     display_stats(stats)
 
     # Display before and after samples
